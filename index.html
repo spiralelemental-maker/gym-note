@@ -24,7 +24,10 @@ header{display:flex;align-items:flex-start;justify-content:space-between;gap:16p
 .brand small{display:block;color:var(--accent);letter-spacing:.16em;font-size:10px;font-weight:800}
 h1{margin:3px 0 0;font-size:30px;letter-spacing:.03em}
 .tagline{margin:6px 0 0;color:var(--muted);font-size:13px}
-.month-badge{min-width:108px;text-align:center;border:1px solid var(--line);background:#0c211a;border-radius:18px;padding:10px 12px}
+.month-badge{min-width:108px;text-align:center;border:1px solid var(--line);background:#0c211a;border-radius:18px;padding:10px 12px;color:var(--text);cursor:pointer;touch-action:manipulation}
+.month-badge:hover{background:#17412f}
+.month-badge:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+.month-badge .calendar-link{display:block;margin-top:5px;color:var(--accent);font-size:10px;white-space:nowrap}
 .month-badge strong{display:block;font-size:26px;color:var(--accent)}
 .month-badge span{font-size:10px;color:var(--muted);letter-spacing:.08em}
 .tabs{position:sticky;top:0;z-index:20;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;background:linear-gradient(180deg,#071712 78%,transparent);padding:8px 0 15px;margin-bottom:8px}
@@ -59,13 +62,45 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 
 .toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,20px);background:#e8f0dd;color:#163024;padding:11px 16px;border-radius:999px;font-size:12px;font-weight:900;opacity:0;pointer-events:none;transition:.2s;z-index:50}.toast.show{opacity:1;transform:translate(-50%,0)}
 .backup-note{font-size:11px;color:var(--muted);line-height:1.7;margin-top:10px}
 @media(max-width:540px){.app{padding:14px 12px 100px}.card{padding:16px;border-radius:20px}.grid2,.toolbar{grid-template-columns:1fr}.grid3{grid-template-columns:1fr 1fr}.tabs{gap:4px}.tab{font-size:11px;padding:0 4px}.month-badge{min-width:88px}.timer-display{font-size:56px}.stats{grid-template-columns:1fr 1fr 1fr}.progress-row{grid-template-columns:62px 1fr auto}}
+/* Calendar modal */
+.cal-dialog{width:min(94vw,610px);max-height:88vh;max-height:88dvh;padding:0;border:1px solid #4f765c;border-radius:22px;background:#0c241c;color:var(--text);box-shadow:0 22px 85px #000b;overflow:auto}
+.cal-dialog::backdrop{background:#000a;backdrop-filter:blur(3px)}
+.cal-inner{padding:18px}
+.cal-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+.cal-top h2{margin:0;font-size:19px}
+.cal-top p{margin:4px 0 0;font-size:12px;color:var(--muted)}
+.cal-close,.cal-nav{border:1px solid var(--line);background:#173c2d;color:var(--text);border-radius:12px;min-width:42px;min-height:42px;font-weight:800}
+.cal-month-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px}
+.cal-month-row strong{font-size:20px}
+.cal-weekdays,.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
+.cal-weekdays{margin-bottom:7px}
+.cal-weekdays span{text-align:center;color:var(--muted);font-size:11px;font-weight:800}
+.cal-weekdays span:first-child{color:#e9abab}
+.cal-weekdays span:last-child{color:#9cc8e3}
+.cal-blank{min-height:54px}
+.cal-day{min-height:54px;border:1px solid #315344;border-radius:12px;background:#0a1d17;color:var(--text);padding:5px 2px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+.cal-day .cal-number{font-size:15px;font-weight:800}
+.cal-day .cal-indicator{font-size:9px;line-height:1.1;min-height:10px;color:var(--muted)}
+.cal-day.has-workout{background:#234a37;border-color:#548062}
+.cal-day.has-workout .cal-indicator{color:var(--accent)}
+.cal-day.is-today .cal-number{text-decoration:underline;text-underline-offset:4px}
+.cal-day.selected{outline:2px solid var(--accent);outline-offset:1px}
+.cal-day:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.cal-legend{color:var(--muted);font-size:11px;margin:12px 0 18px}
+.cal-legend b{color:var(--accent)}
+.cal-detail{border-top:1px solid var(--line);padding-top:15px}
+.cal-detail h3{margin:0 0 6px;font-size:16px}
+.cal-detail .cal-summary{font-size:12px;color:var(--muted);margin:0 0 10px}
+.cal-detail .cal-detail-scroll{max-height:260px;overflow:auto}
+.cal-detail .cal-jump{width:100%;margin-top:12px}
+@media(max-width:380px){.cal-inner{padding:12px}.cal-day{min-height:45px}.cal-day .cal-number{font-size:13px}.cal-day .cal-indicator{font-size:8px}}
 </style>
 </head>
 <body>
 <div class="app">
 <header>
 <div class="brand"><small>GYM NOTE · MY TRAINING LOG</small><h1>自分のペースで、少しずつ強く。</h1><p class="tagline">前回の自分を目安に、今日のトレーニングを。</p></div>
-<div class="month-badge"><strong id="monthDays">0</strong><span>今月のトレーニング日</span></div>
+<button type="button" class="month-badge" id="calendarOpen" aria-label="今月のトレーニング日数。タップしてカレンダーを開く" aria-haspopup="dialog"><strong id="monthDays">0</strong><span>今月のトレーニング日</span><small class="calendar-link">カレンダーを見る ▸</small></button>
 </header>
 <nav aria-label="メインメニュー" class="tabs">
 <button class="tab active" data-tab="today">今日の記録</button>
@@ -124,6 +159,17 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 
 </div>
 </section>
 </div>
+<dialog id="calendarDialog" class="cal-dialog" aria-label="トレーニングカレンダー">
+  <div class="cal-inner">
+    <div class="cal-top"><div><h2>トレーニングカレンダー</h2><p>記録した日をタップして内容を確認できます</p></div><button type="button" id="calendarClose" class="cal-close" aria-label="閉じる">✕</button></div>
+    <div class="cal-month-row"><button type="button" id="calPrev" class="cal-nav" aria-label="前の月">‹</button><strong id="calendarTitle"></strong><button type="button" id="calNext" class="cal-nav" aria-label="次の月">›</button></div>
+    <div id="calendarMonthCount" class="cal-legend" aria-live="polite"></div>
+    <div class="cal-weekdays" aria-hidden="true"><span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span></div>
+    <div id="calendarGrid" class="cal-grid" aria-label="月別カレンダー"></div>
+    <p class="cal-legend"><b>● 記録あり</b>　日付を選ぶと内容を表示</p>
+    <div id="calendarPreview" class="cal-detail" aria-live="polite"></div>
+  </div>
+</dialog>
 <div class="toast" id="toast" role="status"></div>
 <script>
 'use strict';
@@ -135,6 +181,8 @@ const EXERCISES=[
 ];
 let records=loadRecords();
 let historyMode='date';
+let calendarMonth=todayISO().slice(0,7);
+let calendarSelected=null;
 let selectedTimer=90, timerRemaining=90, timerId=null, timerRunning=false;
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -152,6 +200,58 @@ function groupBy(arr,keyFn){return arr.reduce((m,x)=>{const k=keyFn(x);(m[k]??=[
 function sortedRecords(){return [...records].sort((a,b)=>b.date.localeCompare(a.date))}
 function uniqueDays(arr=records){return [...new Set(arr.map(r=>r.date))].sort().reverse()}
 function monthDays(){const now=todayISO().slice(0,7); $('monthDays').textContent=new Set(records.filter(r=>r.date.startsWith(now)).map(r=>r.date)).size}
+
+function selectDefaultCalendarDate(){
+ const days=uniqueDays(records.filter(r=>r.date.startsWith(calendarMonth)));
+ calendarSelected=days[0]||(calendarMonth===todayISO().slice(0,7)?todayISO():null);
+}
+function renderCalendarPreview(){
+ const preview=$('calendarPreview');
+ if(!calendarSelected){preview.innerHTML='<div class="empty">日付をタップすると、その日の記録が見られます。</div>';return}
+ const rows=records.filter(r=>r.date===calendarSelected);
+ const distinct=new Set(rows.map(r=>r.exercise)).size;
+ const dateText=calendarSelected.slice(0,4)+'年 '+fmtDate(calendarSelected);
+ preview.innerHTML='<h3>'+esc(dateText)+'</h3>'+
+ (rows.length?'<p class="cal-summary">'+distinct+'種目・'+rows.length+'セット</p><div class="cal-detail-scroll">'+renderExerciseBlocks(rows,false)+'</div>':'<p class="cal-summary">この日のトレーニング記録はまだありません。</p>')+
+ '<button type="button" class="secondary cal-jump" data-calendar-jump>この日を記録画面で開く</button>';
+}
+function renderCalendar(){
+ const parts=calendarMonth.split('-').map(Number);
+ const year=parts[0],month=parts[1],first=new Date(year,month-1,1).getDay();
+ const last=new Date(year,month,0).getDate();
+ const byDate=groupBy(records.filter(r=>r.date.slice(0,7)===calendarMonth),r=>r.date);
+ const days=Object.keys(byDate).length;
+ $('calendarTitle').textContent=year+'年 '+month+'月';
+ $('calendarMonthCount').textContent='トレーニング '+days+'日 / 合計 '+Object.values(byDate).reduce((sum,rows)=>sum+rows.length,0)+'セット';
+ let html='';
+ for(let i=0;i<first;i++)html+='<div class="cal-blank" aria-hidden="true"></div>';
+ for(let day=1;day<=last;day++){
+  const date=calendarMonth+'-'+String(day).padStart(2,'0');
+  const count=(byDate[date]||[]).length;
+  let cls='cal-day'+(count?' has-workout':'')+(date===todayISO()?' is-today':'')+(date===calendarSelected?' selected':'');
+  html+='<button type="button" class="'+cls+'" data-cal-date="'+date+'" aria-pressed="'+(date===calendarSelected)+'" aria-label="'+esc(fmtDate(date))+', '+count+'セット"><span class="cal-number">'+day+'</span><span class="cal-indicator">'+(count?'● '+count+'セット':'&nbsp;')+'</span></button>';
+ }
+ $('calendarGrid').innerHTML=html;
+ renderCalendarPreview();
+}
+function openCalendar(){
+ calendarMonth=todayISO().slice(0,7);
+ selectDefaultCalendarDate();
+ renderCalendar();
+ const dlg=$('calendarDialog');
+ if(typeof dlg.showModal==='function') dlg.showModal(); else dlg.setAttribute('open','');
+}
+function closeCalendar(){
+ const dlg=$('calendarDialog');
+ if(typeof dlg.close==='function'&&dlg.open)dlg.close();else dlg.removeAttribute('open');
+}
+function changeCalendarMonth(delta){
+ const parts=calendarMonth.split('-').map(Number);
+ const d=new Date(parts[0],parts[1]-1+delta,1);
+ calendarMonth=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+ selectDefaultCalendarDate();
+ renderCalendar();
+}
 function previousSession(ex,date){const prevDates=[...new Set(records.filter(r=>r.exercise===ex&&r.date<date).map(r=>r.date))].sort().reverse(); if(!prevDates.length)return null; const d=prevDates[0]; return {date:d,rows:records.filter(r=>r.exercise===ex&&r.date===d)} }
 function updateExerciseFields(){const ex=$('exercise').value; const walk=isWalking(ex); $('weightLabel').textContent=walk?'速度（km/h）':'重量（kg）'; $('repsLabel').textContent=walk?'時間（分）':'回数（回）'; $('inclineField').style.display=walk?'flex':'none'; updatePreviousHint()}
 function updatePreviousHint(){const ex=$('exercise').value,date=$('recordDate').value; const p=previousSession(ex,date); if(!p){$('previousHint').innerHTML='前回の記録はまだありません。<strong>無理のない重さから。</strong>';return} $('previousHint').innerHTML=`前回 <strong>${esc(fmtDate(p.date))}</strong>：${p.rows.map(describe).map(esc).join(' → ')}${p.rows.some(x=>x.note)?'<br>'+p.rows.filter(x=>x.note).map(x=>esc(x.note)).join(' / '):''}`}
@@ -162,7 +262,7 @@ function dayCard(date,rows,collapsed=false){const exercises=new Set(rows.map(r=>
 function renderHistory(){document.querySelectorAll('[data-history-mode]').forEach(b=>b.classList.toggle('active',b.dataset.historyMode===historyMode)); const q=$('historySearch').value.trim().toLowerCase(); const exFilter=$('historyExercise').value; let rows=sortedRecords().filter(r=>(!exFilter||r.exercise===exFilter)&&(!q||(r.exercise+' '+(r.note||'')).toLowerCase().includes(q))); if(!rows.length){$('historyContent').innerHTML='<div class="empty">該当する記録がありません。</div>';return}
  if(historyMode==='date'){const g=groupBy(rows,r=>r.date); $('historyContent').innerHTML=Object.keys(g).sort().reverse().map((d,i)=>dayCard(d,g[d],i>1)).join('')} else {const exs=[...new Set(rows.map(r=>r.exercise))].sort((a,b)=>EXERCISES.indexOf(a)-EXERCISES.indexOf(b)); $('historyContent').innerHTML=exs.map(ex=>{const ers=rows.filter(r=>r.exercise===ex); const byDate=groupBy(ers,r=>r.date); const latest=Object.keys(byDate).sort().reverse()[0]; const max=Math.max(...ers.map(r=>Number(r.weight)||0)); return `<div class="exercise-block exercise-history"><div class="exercise-title"><span>${esc(ex)}</span><span class="count">最高 ${esc(round(max))}${isWalking(ex)?' km/h':'kg'}</span></div><div class="sub">直近 ${esc(fmtDate(latest))}・${ers.length}セット</div>${Object.keys(byDate).sort().reverse().map(d=>`<div class="set-line"><span class="set-no">${esc(fmtDate(d))}</span><div class="set-main">${byDate[d].map(describe).map(esc).join(' → ')}${byDate[d].some(x=>x.note)?`<div class="note">${byDate[d].filter(x=>x.note).map(x=>esc(x.note)).join(' / ')}</div>`:''}</div></div>`).join('')}</div>`}).join('') }}
 function renderGrowth(){const ex=$('growthExercise').value; const rows=records.filter(r=>r.exercise===ex); if(!rows.length){$('maxWeight').textContent=$('latestWeight').textContent=$('growthDays').textContent='—'; $('growthContent').innerHTML='<div class="empty">この種目の記録はまだありません。</div>';return} const dates=[...new Set(rows.map(r=>r.date))].sort(); const byDate=groupBy(rows,r=>r.date); const max=Math.max(...rows.map(r=>Number(r.weight)||0)); const latestDate=dates[dates.length-1]; const latestMax=Math.max(...byDate[latestDate].map(r=>Number(r.weight)||0)); $('maxWeight').textContent=round(max)+(isWalking(ex)?'km/h':'kg'); $('latestWeight').textContent=round(latestMax)+(isWalking(ex)?'km/h':'kg'); $('growthDays').textContent=dates.length+'日'; const maxAll=Math.max(1,max); $('growthContent').innerHTML=`<div class="progress-list">${dates.slice().reverse().map(d=>{const v=Math.max(...byDate[d].map(r=>Number(r.weight)||0)); return `<div class="progress-row"><div class="d">${esc(fmtDate(d))}</div><div class="bar-wrap"><div class="bar" style="width:${Math.max(5,v/maxAll*100)}%"></div></div><div class="progress-val">${esc(round(v))}${isWalking(ex)?' km/h':'kg'}</div></div>`}).join('')}</div>`}
-function renderAll(){monthDays();renderToday();renderHistory();renderGrowth();updatePreviousHint()}
+function renderAll(){monthDays();renderToday();renderHistory();renderGrowth();updatePreviousHint();if($('calendarDialog').open)renderCalendar()}
 function removeRecord(id){const r=records.find(x=>x.id===id); if(!r)return; if(confirm(`${r.exercise} ${describe(r)} を削除しますか？`)){records=records.filter(x=>x.id!==id);saveRecords();toast('削除しました')}}
 function exportData(){const blob=new Blob([JSON.stringify(records,null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`gym-note-${todayISO()}.json`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 function importData(file){const fr=new FileReader(); fr.onload=()=>{try{const data=JSON.parse(fr.result); if(!Array.isArray(data))throw new Error(); const valid=data.filter(x=>x&&x.id&&x.date&&x.exercise&&Number.isFinite(Number(x.weight))&&Number.isFinite(Number(x.reps))); const map=new Map(records.map(x=>[x.id,x])); valid.forEach(x=>map.set(x.id,{id:String(x.id),date:String(x.date),exercise:String(x.exercise),weight:Number(x.weight),reps:Number(x.reps),incline:Number(x.incline||0),note:String(x.note||'')})); records=[...map.values()];saveRecords();toast(`${valid.length}件を読み込みました`)}catch(e){toast('バックアップを読み込めませんでした')}};fr.readAsText(file)}
@@ -177,6 +277,12 @@ $('exercise').value='チェストプレス'; $('growthExercise').value='チェ�
 updateExerciseFields(); renderAll(); timerRender();
 
 document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
+$('calendarOpen').addEventListener('click',openCalendar);
+$('calendarClose').addEventListener('click',closeCalendar);
+$('calPrev').addEventListener('click',()=>changeCalendarMonth(-1));
+$('calNext').addEventListener('click',()=>changeCalendarMonth(1));
+$('calendarGrid').addEventListener('click',e=>{const b=e.target.closest('[data-cal-date]');if(!b)return;calendarSelected=b.dataset.calDate;renderCalendar()});
+$('calendarPreview').addEventListener('click',e=>{if(!e.target.closest('[data-calendar-jump]')||!calendarSelected)return;$('recordDate').value=calendarSelected;closeCalendar();showTab('today');renderToday();updatePreviousHint();window.scrollTo({top:0,behavior:'smooth'})});
 document.querySelectorAll('[data-history-mode]').forEach(b=>b.addEventListener('click',()=>{historyMode=b.dataset.historyMode;renderHistory()}));
 $('recordDate').addEventListener('change',()=>{renderToday();updatePreviousHint()}); $('exercise').addEventListener('change',updateExerciseFields); $('addRecord').addEventListener('click',addRecord);
 $('historySearch').addEventListener('input',renderHistory); $('historyExercise').addEventListener('change',renderHistory); $('growthExercise').addEventListener('change',renderGrowth);
