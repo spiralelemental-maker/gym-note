@@ -59,6 +59,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 
 .progress-list{display:flex;flex-direction:column;gap:9px}.progress-row{display:grid;grid-template-columns:72px 1fr auto;gap:10px;align-items:center;border-bottom:1px solid #28463a;padding:10px 0}.progress-row .d{font-size:12px;color:var(--muted)}.bar-wrap{height:8px;background:#071712;border-radius:999px;overflow:hidden}.bar{height:100%;background:linear-gradient(90deg,var(--accent2),var(--accent));border-radius:999px}.progress-val{font-size:12px;font-weight:800}
 .empty{text-align:center;padding:28px 12px;color:var(--muted);font-size:13px;line-height:1.7}
 .timer{text-align:center}.timer-display{font-size:64px;font-weight:800;letter-spacing:-.04em;font-variant-numeric:tabular-nums;margin:16px 0 6px}.timer-status{color:var(--accent);font-size:13px;margin-bottom:16px}.presets{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.presets button{min-height:46px;border-radius:12px;border:1px solid var(--line);background:#0a2119;color:var(--text);font-weight:800}.presets button.active{background:var(--accent);color:#153225}
+.timer-sound-settings{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--line);border-radius:14px;background:#0c261d;padding:10px 12px;margin-top:16px}
+.timer-sound-option{display:flex;gap:10px;align-items:center;justify-content:space-between;flex:1;min-width:0;font-size:13px;font-weight:800;text-align:left;cursor:pointer}
+.timer-sound-option input{margin:0;width:24px;height:24px;min-height:24px;accent-color:var(--accent);cursor:pointer}
+.timer-preview{min-height:40px;flex-shrink:0;padding:0 12px;font-size:12px}
+.timer-preview:disabled{opacity:.4;cursor:not-allowed}
+.timer-sound-note{text-align:left;margin:8px 1px 0;font-size:11px;line-height:1.6;color:var(--muted)}
 .toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,20px);background:#e8f0dd;color:#163024;padding:11px 16px;border-radius:999px;font-size:12px;font-weight:900;opacity:0;pointer-events:none;transition:.2s;z-index:50}.toast.show{opacity:1;transform:translate(-50%,0)}
 .backup-note{font-size:11px;color:var(--muted);line-height:1.7;margin-top:10px}
 .set-entry-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
@@ -176,6 +182,11 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 
 <div class="presets"><button data-sec="60">60秒</button><button class="active" data-sec="90">90秒</button><button data-sec="120">120秒</button></div>
 <div class="timer-display" id="timerDisplay">01:30</div><div class="timer-status" id="timerStatus">準備できました</div>
 <div class="actions"><button class="primary" id="timerToggle">スタート</button><button class="secondary" id="timerReset">リセット</button></div>
+<div class="timer-sound-settings">
+  <label class="timer-sound-option" for="timerSound"><span>終了時の通知音</span><input id="timerSound" type="checkbox" role="switch" aria-label="タイマー終了時の通知音"/></label>
+  <button class="ghost timer-preview" id="timerSoundPreview" type="button" disabled>♪ 音を試す</button>
+</div>
+<p class="timer-sound-note">初期設定はOFF。変更した設定は次回も引き継ぎます。音やタイマーは端末・ブラウザの状態により制限される場合があります。</p>
 </div>
 <div class="card">
 <h3>データ管理</h3><p class="sub">このアプリの記録はブラウザ内に保存されます。</p>
@@ -223,6 +234,8 @@ let historyMode='date';
 let calendarMonth=todayISO().slice(0,7);
 let calendarSelected=null;
 let selectedTimer=90, timerRemaining=90, timerId=null, timerRunning=false;
+const TIMER_SOUND_KEY='gym-note-timer-sound-v1';
+let timerAudioContext=null;
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const round=n=>Number.isInteger(Number(n))?String(Number(n)):String(Number(n).toFixed(1));
@@ -343,14 +356,50 @@ function removeRecord(id){const r=records.find(x=>x.id===id); if(!r)return; if(c
 function exportData(){const blob=new Blob([JSON.stringify(records,null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`gym-note-${todayISO()}.json`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 function importData(file){const fr=new FileReader(); fr.onload=()=>{try{const data=JSON.parse(fr.result); if(!Array.isArray(data))throw new Error(); const valid=data.filter(x=>x&&x.id&&x.date&&x.exercise&&Number.isFinite(Number(x.weight))&&Number.isFinite(Number(x.reps))); const map=new Map(records.map(x=>[x.id,x])); valid.forEach(x=>map.set(x.id,{id:String(x.id),date:String(x.date),exercise:String(x.exercise),weight:Number(x.weight),reps:Number(x.reps),incline:Number(x.incline||0),note:String(x.note||''),machine:String(x.machine||machineForExercise(String(x.exercise)))})); records=[...map.values()];saveRecords();toast(`${valid.length}件を読み込みました`)}catch(e){toast('バックアップを読み込めませんでした')}};fr.readAsText(file)}
 function showTab(id){document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===id)); if(id==='history')renderHistory(); if(id==='growth')renderGrowth()}
+function getTimerAudioContext(){
+ const Context=window.AudioContext||window.webkitAudioContext;
+ if(!Context)return null;
+ try{if(!timerAudioContext)timerAudioContext=new Context();return timerAudioContext}catch(e){return null}
+}
+function unlockTimerAudio(){
+ if(!$('timerSound').checked)return;
+ const ctx=getTimerAudioContext();
+ if(ctx&&ctx.state==='suspended'){
+  try{const p=ctx.resume();if(p&&typeof p.catch==='function')p.catch(()=>{})}catch(e){}
+ }
+}
+function playTimerChime(){
+ if(!$('timerSound').checked)return;
+ const ctx=getTimerAudioContext();
+ // Play only in the active tab; iOS may suspend audio in the background.
+ if(!ctx||ctx.state!=='running')return;
+ try{
+  const now=ctx.currentTime+0.015;
+  [[880,0],[1100,0.22]].forEach(([hz,delay])=>{
+   const when=now+delay,osc=ctx.createOscillator(),vol=ctx.createGain();
+   osc.type='sine';
+   osc.frequency.setValueAtTime(hz,when);
+   vol.gain.setValueAtTime(0.0001,when);
+   vol.gain.exponentialRampToValueAtTime(0.07,when+0.025);
+   vol.gain.exponentialRampToValueAtTime(0.0001,when+0.17);
+   osc.connect(vol);vol.connect(ctx.destination);
+   osc.start(when);osc.stop(when+0.18);
+  });
+ }catch(e){}
+}
+function updateTimerSoundUI(){
+ $('timerSoundPreview').disabled=!$('timerSound').checked;
+}
 function timerRender(){const m=Math.floor(timerRemaining/60),s=timerRemaining%60;$('timerDisplay').textContent=String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');$('timerStatus').textContent=timerRunning?'休憩中':timerRemaining===0?'休憩終了！':'準備できました';$('timerToggle').textContent=timerRunning?'一時停止':timerRemaining===0?'もう一度スタート':'スタート'}
-function timerStartPause(){if(timerRemaining===0)timerRemaining=selectedTimer; if(timerRunning){clearInterval(timerId);timerId=null;timerRunning=false;timerRender();return} timerRunning=true;timerId=setInterval(()=>{timerRemaining=Math.max(0,timerRemaining-1); if(timerRemaining===0){clearInterval(timerId);timerId=null;timerRunning=false; if(navigator.vibrate)navigator.vibrate([120,80,120]);} timerRender()},1000);timerRender()}
+function timerStartPause(){if(timerRemaining===0)timerRemaining=selectedTimer; if(timerRunning){clearInterval(timerId);timerId=null;timerRunning=false;timerRender();return} unlockTimerAudio();timerRunning=true;timerId=setInterval(()=>{timerRemaining=Math.max(0,timerRemaining-1); if(timerRemaining===0){clearInterval(timerId);timerId=null;timerRunning=false; if(navigator.vibrate)navigator.vibrate([120,80,120]);playTimerChime();} timerRender()},1000);timerRender()}
 function timerReset(){clearInterval(timerId);timerId=null;timerRunning=false;timerRemaining=selectedTimer;timerRender()}
 
 $('recordDate').value=todayISO(); $('selectedDateText').textContent=fmtDate(todayISO());
 // Seed exercise choices to a useful default if present in today's data.
 setOptions($('historyExercise'),true); setOptions($('growthExercise')); $('machine').value='ジムのマシン'; fillExercisesForMachine('チェストプレス'); $('growthExercise').value='チェストプレス';
 updateExerciseFields(); renderAll(); timerRender();
+try{$('timerSound').checked=localStorage.getItem(TIMER_SOUND_KEY)==='true'}catch(e){$('timerSound').checked=false}
+updateTimerSoundUI();
 
 document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
 $('calendarOpen').addEventListener('click',openCalendar);
@@ -367,6 +416,12 @@ $('historySearch').addEventListener('input',renderHistory); $('historyExercise')
 document.addEventListener('click',e=>{const del=e.target.closest('[data-delete]'); if(del)removeRecord(del.dataset.delete); const t=e.target.closest('[data-toggle-day]'); if(t)t.closest('.day-card').classList.toggle('collapsed')});
 $('exportBtn').addEventListener('click',exportData); $('importBtn').addEventListener('click',()=>$('importFile').click()); $('importFile').addEventListener('change',e=>{if(e.target.files[0])importData(e.target.files[0]);e.target.value=''})
 document.querySelectorAll('[data-sec]').forEach(b=>b.addEventListener('click',()=>{selectedTimer=Number(b.dataset.sec);document.querySelectorAll('[data-sec]').forEach(x=>x.classList.toggle('active',x===b));timerReset()})); $('timerToggle').addEventListener('click',timerStartPause); $('timerReset').addEventListener('click',timerReset);
+$('timerSound').addEventListener('change',()=>{
+ try{localStorage.setItem(TIMER_SOUND_KEY,String($('timerSound').checked))}catch(e){}
+ updateTimerSoundUI();
+ unlockTimerAudio();
+});
+$('timerSoundPreview').addEventListener('click',()=>{unlockTimerAudio();playTimerChime()});
 </script>
 </body>
 </html>
