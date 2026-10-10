@@ -362,11 +362,15 @@ function getTimerAudioContext(){
  try{if(!timerAudioContext)timerAudioContext=new Context();return timerAudioContext}catch(e){return null}
 }
 function unlockTimerAudio(){
- if(!$('timerSound').checked)return;
+ if(!$('timerSound').checked)return Promise.resolve(false);
  const ctx=getTimerAudioContext();
- if(ctx&&ctx.state==='suspended'){
-  try{const p=ctx.resume();if(p&&typeof p.catch==='function')p.catch(()=>{})}catch(e){}
- }
+ if(!ctx)return Promise.resolve(false);
+ if(ctx.state==='running')return Promise.resolve(true);
+ try{
+  const result=ctx.resume();
+  if(result&&typeof result.then==='function')return result.then(()=>ctx.state==='running').catch(()=>false);
+  return Promise.resolve(ctx.state==='running');
+ }catch(e){return Promise.resolve(false)}
 }
 function playTimerChime(){
  if(!$('timerSound').checked)return;
@@ -421,7 +425,7 @@ $('timerSound').addEventListener('change',()=>{
  updateTimerSoundUI();
  unlockTimerAudio();
 });
-$('timerSoundPreview').addEventListener('click',()=>{unlockTimerAudio();playTimerChime()});
+$('timerSoundPreview').addEventListener('click',()=>{unlockTimerAudio().then(ready=>{if(ready)playTimerChime();else toast('この環境では音を再生できません')})});
 </script>
 </body>
 </html>
