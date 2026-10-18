@@ -175,6 +175,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 
 <div class="stats"><div class="stat"><span>最高重量</span><strong id="maxWeight">—</strong></div><div class="stat"><span>直近</span><strong id="latestWeight">—</strong></div><div class="stat"><span>記録日数</span><strong id="growthDays">—</strong></div></div>
 <div id="growthContent"></div>
 </div>
+<div class="card">
+<h3>ChatGPTでトレーニング分析</h3>
+<p class="sub">記録を分析用の文章にまとめます。ChatGPTへ自動送信はされません。</p>
+<div class="field"><label for="aiRange">分析する期間</label><select id="aiRange">
+<option value="7">直近7日間</option>
+<option value="28" selected>直近28日間</option>
+<option value="90">直近90日間</option>
+<option value="all">全期間</option>
+</select></div>
+<div class="actions"><button type="button" class="primary" id="aiCopyBtn">分析用テキストをコピー</button></div>
+<p class="backup-note">コピーした文章をChatGPTの会話に貼り付けて送信すると、前回からの成長や次回のおすすめ重量を相談できます。記録はコピーするまで端末の外には送られません。</p>
+<div class="field" id="aiManualCopy" hidden><label for="aiText">自動コピーできない場合：下の文章を長押ししてコピー</label><textarea id="aiText" readonly rows="9"></textarea></div>
+</div>
 </section>
 <section class="panel" id="timer">
 <div class="card timer">
@@ -353,6 +366,60 @@ function renderHistory(){document.querySelectorAll('[data-history-mode]').forEac
 function renderGrowth(){const ex=$('growthExercise').value; const rows=records.filter(r=>r.exercise===ex); if(!rows.length){$('maxWeight').textContent=$('latestWeight').textContent=$('growthDays').textContent='—'; $('growthContent').innerHTML='<div class="empty">この種目の記録はまだありません。</div>';return} const dates=[...new Set(rows.map(r=>r.date))].sort(); const byDate=groupBy(rows,r=>r.date); const max=Math.max(...rows.map(r=>Number(r.weight)||0)); const latestDate=dates[dates.length-1]; const latestMax=Math.max(...byDate[latestDate].map(r=>Number(r.weight)||0)); $('maxWeight').textContent=round(max)+(isWalking(ex)?'km/h':'kg'); $('latestWeight').textContent=round(latestMax)+(isWalking(ex)?'km/h':'kg'); $('growthDays').textContent=dates.length+'日'; const maxAll=Math.max(1,max); $('growthContent').innerHTML=`<div class="progress-list">${dates.slice().reverse().map(d=>{const v=Math.max(...byDate[d].map(r=>Number(r.weight)||0)); return `<div class="progress-row"><div class="d">${esc(fmtDate(d))}</div><div class="bar-wrap"><div class="bar" style="width:${Math.max(5,v/maxAll*100)}%"></div></div><div class="progress-val">${esc(round(v))}${isWalking(ex)?' km/h':'kg'}</div></div>`}).join('')}</div>`}
 function renderAll(){monthDays();renderToday();renderHistory();renderGrowth();updatePreviousHint();if($('calendarDialog').open)renderCalendar()}
 function removeRecord(id){const r=records.find(x=>x.id===id); if(!r)return; if(confirm(`${r.exercise} ${describe(r)} を削除しますか？`)){records=records.filter(x=>x.id!==id);saveRecords();toast('削除しました')}}
+function buildAiAnalysisText(){
+ const range=$('aiRange').value;
+ const now=new Date();
+ const start=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+ if(range!=='all')start.setDate(start.getDate()-(Number(range)-1));
+ const cutoff=start.getFullYear()+'-'+String(start.getMonth()+1).padStart(2,'0')+'-'+String(start.getDate()).padStart(2,'0');
+ const rows=records.filter(r=>r&&typeof r.date==='string'&&typeof r.exercise==='string'&&(range==='all'||r.date>=cutoff))
+  .sort((a,b)=>a.date.localeCompare(b.date));
+ if(!rows.length)return '';
+ const dates=[...new Set(rows.map(r=>r.date))];
+ const label=range==='all'?'全期間':'直近'+range+'日間';
+ const lines=[
+  '# Gym Note トレーニング分析用ログ',
+  '対象：'+label+'（'+dates[0]+'〜'+dates[dates.length-1]+'）',
+  '記録日数：'+dates.length+'日／記録セット数：'+rows.length,
+  '',
+  '以下の記録について、同じ種目・同じ器具の前回比較、伸びている点、次回の開始重量と回数・セット数、偏りがあれば改善案を教えてください。',
+  'フォーム・痛みの有無・無理のない漸進を優先し、数値だけで無理な増量を勧めないでください。',
+  '有酸素運動の速度はkm/h、時間は分です。筋トレ重量と混同しないでください。',
+  '',
+  '## 記録'
+ ];
+ const byDate=groupBy(rows,r=>r.date);
+ dates.forEach(date=>{
+  lines.push('');
+  lines.push('【'+date+'】');
+  const byExercise=groupBy(byDate[date],r=>r.exercise);
+  Object.entries(byExercise).forEach(([exercise,sets])=>{
+   lines.push('・'+exercise+'（'+(sets[0].machine||machineForExercise(exercise))+'）');
+   sets.forEach((r,i)=>{
+    const note=String(r.note||'').replace(/\s+/g,' ').trim();
+    lines.push('  '+(i+1)+'セット目：'+describe(r)+(note?' ／ メモ：'+note:''));
+   });
+  });
+ });
+ return lines.join('\n');
+}
+async function copyAiAnalysis(){
+ const content=buildAiAnalysisText();
+ if(!content){toast('選択した期間に記録がありません');return}
+ const manual=$('aiManualCopy'),input=$('aiText');
+ input.value=content;
+ try{
+  if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error('clipboard unavailable');
+  await navigator.clipboard.writeText(content);
+  manual.hidden=true;
+  toast('コピーしました！ChatGPTに貼り付けてね');
+ }catch(e){
+  manual.hidden=false;
+  input.focus();
+  input.select();
+  toast('文章を長押ししてコピーしてください');
+ }
+}
 function exportData(){const blob=new Blob([JSON.stringify(records,null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`gym-note-${todayISO()}.json`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 function importData(file){const fr=new FileReader(); fr.onload=()=>{try{const data=JSON.parse(fr.result); if(!Array.isArray(data))throw new Error(); const valid=data.filter(x=>x&&x.id&&x.date&&x.exercise&&Number.isFinite(Number(x.weight))&&Number.isFinite(Number(x.reps))); const map=new Map(records.map(x=>[x.id,x])); valid.forEach(x=>map.set(x.id,{id:String(x.id),date:String(x.date),exercise:String(x.exercise),weight:Number(x.weight),reps:Number(x.reps),incline:Number(x.incline||0),note:String(x.note||''),machine:String(x.machine||machineForExercise(String(x.exercise)))})); records=[...map.values()];saveRecords();toast(`${valid.length}件を読み込みました`)}catch(e){toast('バックアップを読み込めませんでした')}};fr.readAsText(file)}
 function showTab(id){document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===id)); if(id==='history')renderHistory(); if(id==='growth')renderGrowth()}
@@ -418,6 +485,7 @@ $('setCount').addEventListener('change',()=>updateBulkEntryUI()); $('customReps'
 updateBulkEntryUI();
 $('historySearch').addEventListener('input',renderHistory); $('historyExercise').addEventListener('change',renderHistory); $('growthExercise').addEventListener('change',renderGrowth);
 document.addEventListener('click',e=>{const del=e.target.closest('[data-delete]'); if(del)removeRecord(del.dataset.delete); const t=e.target.closest('[data-toggle-day]'); if(t)t.closest('.day-card').classList.toggle('collapsed')});
+$('aiCopyBtn').addEventListener('click',copyAiAnalysis);
 $('exportBtn').addEventListener('click',exportData); $('importBtn').addEventListener('click',()=>$('importFile').click()); $('importFile').addEventListener('change',e=>{if(e.target.files[0])importData(e.target.files[0]);e.target.value=''})
 document.querySelectorAll('[data-sec]').forEach(b=>b.addEventListener('click',()=>{selectedTimer=Number(b.dataset.sec);document.querySelectorAll('[data-sec]').forEach(x=>x.classList.toggle('active',x===b));timerReset()})); $('timerToggle').addEventListener('click',timerStartPause); $('timerReset').addEventListener('click',timerReset);
 $('timerSound').addEventListener('change',()=>{
