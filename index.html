@@ -148,9 +148,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 
 </div>
 <div class="field" id="inclineField"><label for="incline">傾斜（%）</label><input id="incline" inputmode="decimal" min="0" step="0.5" type="number" value="0"/></div>
 <div class="bulk-options">
-<label class="bulk-checkbox" for="customReps"><input id="customReps" type="checkbox"/><span>セットごとに回数を変更する</span></label>
+<label class="bulk-checkbox" for="customReps"><input id="customReps" type="checkbox"/><span>セットごとに重量・回数を変更する</span></label>
 <div id="setDetails" class="set-details" hidden></div>
-<p class="bulk-caption">同じ重量・回数ならまとめて登録。履歴には1セットずつ保存します。</p>
+<p class="bulk-caption">前回の全セットを自動入力します。重量・回数は自由に変更でき、過去の記録は変更されません。</p>
 </div>
 <div class="field"><label for="note">フォーム・痛みなど（任意）</label><textarea id="note" placeholder="例：余裕あり / 10回はキツイ / 右左"></textarea></div>
 <div class="actions"><button class="primary" id="addRecord">＋ このセットを記録</button></div>
@@ -318,44 +318,69 @@ function changeCalendarMonth(delta){
  renderCalendar();
 }
 function previousSession(ex,date){const prevDates=[...new Set(records.filter(r=>r.exercise===ex&&r.date<date).map(r=>r.date))].sort().reverse(); if(!prevDates.length)return null; const d=prevDates[0]; return {date:d,rows:records.filter(r=>r.exercise===ex&&r.date===d)} }
-function updateExerciseFields(){const ex=$('exercise').value; const walk=isWalking(ex), cable=$('machine').value==='ケーブルマシン'; $('weightLabel').textContent=walk?'速度（km/h）':cable?'マシン表示重量（kg）':'重量（kg）'; $('repsLabel').textContent=walk?'時間（分）':'回数（回）'; $('inclineField').style.display=walk?'flex':'none'; $('cableTip').hidden=!cable; updatePreviousHint()}
-function updatePreviousHint(){const ex=$('exercise').value,date=$('recordDate').value; const p=previousSession(ex,date); if(!p){$('previousHint').innerHTML='前回の記録はまだありません。<strong>無理のない重さから。</strong>';return} $('previousHint').innerHTML=`前回 <strong>${esc(fmtDate(p.date))}</strong>：${p.rows.map(describe).map(esc).join(' → ')}${p.rows.some(x=>x.note)?'<br>'+p.rows.filter(x=>x.note).map(x=>esc(x.note)).join(' / '):''}`}
-// Each set has its own record, preserving old data and charts.
-let perSetReps = [];
-function updateBulkEntryUI(resetCustom=false){
- const count=Number($('setCount').value)||1;
- if(resetCustom) perSetReps=[];
- else document.querySelectorAll('[data-set-reps]').forEach((input,i)=>{perSetReps[i]=input.value});
- const custom=$('customReps').checked;
- const details=$('setDetails');
- details.hidden=!custom;
+function updateExerciseFields(){
+ const ex=$('exercise').value,walk=isWalking(ex),cable=$('machine').value==='ケーブルマシン';
+ $('weightLabel').textContent=walk?'速度（km/h）':cable?'マシン表示重量（kg）':'重量（kg）';
+ $('repsLabel').textContent=walk?'時間（分）':'回数（回）';
+ $('inclineField').style.display=walk?'flex':'none';
+ $('cableTip').hidden=!cable;
+ loadPreviousSets();
+}
+function updatePreviousHint(){
+ const p=previousSession($('exercise').value,$('recordDate').value);
+ $('previousHint').innerHTML=p
+  ?`前回 <strong>${esc(fmtDate(p.date))}</strong>：${p.rows.map(describe).map(esc).join(' → ')}${p.rows.some(x=>x.note)?'<br>'+p.rows.filter(x=>x.note).map(x=>esc(x.note)).join(' / '):''}`
+  :'前回の記録はまだありません。<strong>無理のない重さから。</strong>';
+}
+let perSetValues=[];
+function readSetDetails(){
+ document.querySelectorAll('[data-set-index]').forEach(el=>{
+  const i=Number(el.dataset.setIndex),field=el.dataset.setField;
+  if(!perSetValues[i])perSetValues[i]={weight:$('weight').value,reps:$('reps').value};
+  perSetValues[i][field]=el.value;
+ });
+}
+function loadPreviousSets(){
+ updatePreviousHint();
+ const p=previousSession($('exercise').value,$('recordDate').value);
+ if(p&&p.rows.length){
+  const rows=p.rows.slice(0,5);
+  $('setCount').value=String(rows.length);
+  $('weight').value=rows[0].weight;
+  $('reps').value=rows[0].reps;
+  $('incline').value=rows[0].incline||0;
+  perSetValues=rows.map(r=>({weight:String(r.weight),reps:String(r.reps)}));
+  $('customReps').checked=rows.length>1&&rows.some(r=>r.weight!==rows[0].weight||r.reps!==rows[0].reps);
+ }else{
+  $('setCount').value='1';$('weight').value='';$('reps').value='';
+  $('incline').value='0';perSetValues=[];$('customReps').checked=false;
+ }
+ updateBulkEntryUI(false);
+}
+function updateBulkEntryUI(readExisting=true){
+ if(readExisting)readSetDetails();
+ const count=Number($('setCount').value)||1,custom=$('customReps').checked;
+ const details=$('setDetails');details.hidden=!custom;
  if(custom){
   details.innerHTML=Array.from({length:count},(_,i)=>{
-   const value=perSetReps[i]??$('reps').value;
-   return `<div class="set-detail-row"><label for="setReps${i}">${i+1}セット目</label><input id="setReps${i}" data-set-reps type="number" inputmode="numeric" step="1" min="1" value="${esc(value)}" aria-label="${i+1}セット目の回数"/><span class="set-detail-unit">回</span></div>`;
+   const row=perSetValues[i]||{weight:$('weight').value,reps:$('reps').value};
+   return `<div class="set-detail-row" style="grid-template-columns:64px 1fr 1fr"><label>${i+1}セット目</label><input data-set-index="${i}" data-set-field="weight" type="number" inputmode="decimal" step="0.25" min="0" value="${esc(row.weight)}" aria-label="${i+1}セット目の重量または速度"/><input data-set-index="${i}" data-set-field="reps" type="number" inputmode="numeric" step="1" min="1" value="${esc(row.reps)}" aria-label="${i+1}セット目の回数または時間"/></div>`;
   }).join('');
  }else details.innerHTML='';
  $('addRecord').textContent=count===1?'＋ このセットを記録':`＋ ${count}セットまとめて記録`;
 }
 function addRecord(){
  const date=$('recordDate').value,exercise=$('exercise').value,machine=$('machine').value;
- const weightRaw=$('weight').value,repsRaw=$('reps').value;
- const weight=Number(weightRaw),incline=Number($('incline').value||0),note=$('note').value.trim();
  const count=Number($('setCount').value),custom=$('customReps').checked;
- const entries=custom?[...document.querySelectorAll('[data-set-reps]')]:[];
- const rawReps=custom?entries.map(el=>el.value):Array(count).fill(repsRaw);
- const repValues=rawReps.map(Number);
- if(!date||!exercise||!machine||weightRaw.trim()===''||!Number.isFinite(weight)||weight<0
-   ||!Number.isInteger(count)||count<1||count>5||!Number.isFinite(incline)||incline<0
-   ||(custom&&entries.length!==count)
-   ||rawReps.some(value=>String(value).trim()==='')
-   ||repValues.some(value=>!Number.isInteger(value)||value<1)){
-    toast('重量・回数・セット数を確認してください');return;
+ const incline=Number($('incline').value||0),note=$('note').value.trim();
+ if(custom)readSetDetails();
+ const rows=Array.from({length:count},(_,i)=>custom?(perSetValues[i]||{weight:$('weight').value,reps:$('reps').value}):{weight:$('weight').value,reps:$('reps').value});
+ if(!date||!exercise||!machine||!Number.isInteger(count)||count<1||count>5||!Number.isFinite(incline)||incline<0||
+ rows.some(r=>String(r.weight).trim()===''||String(r.reps).trim()===''||!Number.isFinite(Number(r.weight))||Number(r.weight)<0||!Number.isInteger(Number(r.reps))||Number(r.reps)<1)){
+  toast('各セットの重量・回数を確認してください');return;
  }
- const newRows=repValues.map(reps=>({id:uid(),date,machine,exercise,weight,reps,incline:isWalking(exercise)?incline:0,note}));
- records.push(...newRows);
- saveRecords();
- $('note').value='';
+ const newRows=rows.map(r=>({id:uid(),date,machine,exercise,weight:Number(r.weight),reps:Number(r.reps),incline:isWalking(exercise)?incline:0,note}));
+ records.push(...newRows);saveRecords();$('note').value='';
  toast(count===1?'記録しました':`${count}セットを記録しました`);
 }
 function renderExerciseBlocks(rows, deletable=false){const g=groupBy(rows,r=>r.exercise); return Object.entries(g).map(([ex,rs])=>`<div class="exercise-block"><div class="exercise-title"><span>${esc(ex)}<span class="equipment-label">${esc(rs[0].machine||machineForExercise(ex))}</span></span><span class="count">${rs.length}セット</span></div>${rs.map((r,i)=>`<div class="set-line"><span class="set-no">${i+1}</span><div class="set-main"><strong>${esc(describe(r))}</strong>${r.note?`<div class="note">${esc(r.note)}</div>`:''}</div>${deletable?`<button class="mini-delete" data-delete="${esc(r.id)}" aria-label="削除">✕</button>`:''}</div>`).join('')}</div>`).join('')}
@@ -478,10 +503,10 @@ $('calendarClose').addEventListener('click',closeCalendar);
 $('calPrev').addEventListener('click',()=>changeCalendarMonth(-1));
 $('calNext').addEventListener('click',()=>changeCalendarMonth(1));
 $('calendarGrid').addEventListener('click',e=>{const b=e.target.closest('[data-cal-date]');if(!b)return;calendarSelected=b.dataset.calDate;renderCalendar()});
-$('calendarPreview').addEventListener('click',e=>{if(!e.target.closest('[data-calendar-jump]')||!calendarSelected)return;$('recordDate').value=calendarSelected;closeCalendar();showTab('today');renderToday();updatePreviousHint();window.scrollTo({top:0,behavior:'smooth'})});
+$('calendarPreview').addEventListener('click',e=>{if(!e.target.closest('[data-calendar-jump]')||!calendarSelected)return;$('recordDate').value=calendarSelected;closeCalendar();showTab('today');renderToday();loadPreviousSets();window.scrollTo({top:0,behavior:'smooth'})});
 document.querySelectorAll('[data-history-mode]').forEach(b=>b.addEventListener('click',()=>{historyMode=b.dataset.historyMode;renderHistory()}));
-$('recordDate').addEventListener('change',()=>{renderToday();updatePreviousHint()}); $('machine').addEventListener('change',()=>fillExercisesForMachine()); $('exercise').addEventListener('change',updateExerciseFields); $('addRecord').addEventListener('click',addRecord);
-$('setCount').addEventListener('change',()=>updateBulkEntryUI()); $('customReps').addEventListener('change',()=>updateBulkEntryUI(true)); $('reps').addEventListener('input',()=>updateBulkEntryUI(true));
+$('recordDate').addEventListener('change',()=>{renderToday();loadPreviousSets()}); $('machine').addEventListener('change',()=>fillExercisesForMachine()); $('exercise').addEventListener('change',updateExerciseFields); $('addRecord').addEventListener('click',addRecord);
+$('setCount').addEventListener('change',()=>updateBulkEntryUI()); $('customReps').addEventListener('change',()=>updateBulkEntryUI());
 updateBulkEntryUI();
 $('historySearch').addEventListener('input',renderHistory); $('historyExercise').addEventListener('change',renderHistory); $('growthExercise').addEventListener('change',renderGrowth);
 document.addEventListener('click',e=>{const del=e.target.closest('[data-delete]'); if(del)removeRecord(del.dataset.delete); const t=e.target.closest('[data-toggle-day]'); if(t)t.closest('.day-card').classList.toggle('collapsed')});
