@@ -199,7 +199,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 
   <label class="timer-sound-option" for="timerSound"><span>終了時の通知音</span><input id="timerSound" type="checkbox" role="switch" aria-label="タイマー終了時の通知音"/></label>
   <button class="ghost timer-preview" id="timerSoundPreview" type="button" disabled>♪ 音を試す</button>
 </div>
-<p class="timer-sound-note">初期設定はOFF。変更した設定は次回も引き継ぎます。音やタイマーは端末・ブラウザの状態により制限される場合があります。</p>
+<p class="timer-sound-note">初期設定はOFF。変更した設定は次回も引き継ぎます。画面を戻すと残り時間が更新されます。画面ロック中の通知音は端末・ブラウザにより制限されます。</p>
 </div>
 <div class="card">
 <h3>データ管理</h3><p class="sub">このアプリの記録はブラウザ内に保存されます。</p>
@@ -246,7 +246,7 @@ let records=loadRecords();
 let historyMode='date';
 let calendarMonth=todayISO().slice(0,7);
 let calendarSelected=null;
-let selectedTimer=90, timerRemaining=90, timerId=null, timerRunning=false;
+let selectedTimer=90, timerRemaining=90, timerId=null, timerRunning=false, timerDeadline=null, timerRemainingMs=90000;
 const TIMER_SOUND_KEY='gym-note-timer-sound-v1';
 let timerAudioContext=null;
 const $=id=>document.getElementById(id);
@@ -487,8 +487,36 @@ function updateTimerSoundUI(){
  $('timerSoundPreview').disabled=!$('timerSound').checked;
 }
 function timerRender(){const m=Math.floor(timerRemaining/60),s=timerRemaining%60;$('timerDisplay').textContent=String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');$('timerStatus').textContent=timerRunning?'休憩中':timerRemaining===0?'休憩終了！':'準備できました';$('timerToggle').textContent=timerRunning?'一時停止':timerRemaining===0?'もう一度スタート':'スタート'}
-function timerStartPause(){if(timerRemaining===0)timerRemaining=selectedTimer; if(timerRunning){clearInterval(timerId);timerId=null;timerRunning=false;timerRender();return} unlockTimerAudio();timerRunning=true;timerId=setInterval(()=>{timerRemaining=Math.max(0,timerRemaining-1); if(timerRemaining===0){clearInterval(timerId);timerId=null;timerRunning=false; if(navigator.vibrate)navigator.vibrate([120,80,120]);playTimerChime();} timerRender()},1000);timerRender()}
-function timerReset(){clearInterval(timerId);timerId=null;timerRunning=false;timerRemaining=selectedTimer;timerRender()}
+// Use wall-clock time so suspended background callbacks do not extend a rest.
+function timerSync(){
+ if(!timerRunning)return;
+ timerRemainingMs=Math.max(0,timerDeadline-Date.now());
+ timerRemaining=Math.ceil(timerRemainingMs/1000);
+ if(timerRemainingMs===0){
+  clearInterval(timerId);timerId=null;timerRunning=false;timerDeadline=null;
+  if(navigator.vibrate)navigator.vibrate([120,80,120]);
+  playTimerChime();
+ }
+ timerRender();
+}
+function timerStartPause(){
+ if(timerRunning){
+  timerSync();
+  clearInterval(timerId);timerId=null;timerRunning=false;timerDeadline=null;
+  timerRender();return;
+ }
+ if(timerRemainingMs===0){timerRemainingMs=selectedTimer*1000;timerRemaining=selectedTimer;}
+ unlockTimerAudio();
+ timerDeadline=Date.now()+timerRemainingMs;timerRunning=true;
+ timerId=setInterval(timerSync,250);timerRender();
+}
+function timerReset(){
+ clearInterval(timerId);timerId=null;timerRunning=false;timerDeadline=null;
+ timerRemainingMs=selectedTimer*1000;timerRemaining=selectedTimer;timerRender();
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)timerSync();});
+window.addEventListener('pageshow',timerSync);
+window.addEventListener('focus',timerSync);
 
 $('recordDate').value=todayISO(); $('selectedDateText').textContent=fmtDate(todayISO());
 // Seed exercise choices to a useful default if present in today's data.
